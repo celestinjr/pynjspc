@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pynjspc"
+version = "0.1.0"
+authors = [
+  { name="celestinjr" },
+]
+description = "A Python client for nodejs-poolController (njspc)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Home Automation",
+]
+dependencies = [
+    "python-socketio>=5.0.0",
+    "aiohttp>=3.8.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.18.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.0.0",
+    "mypy>=1.0.0",
+    "flake8>=6.0.0"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/celestinjr/pynjspc"
+"Bug Tracker" = "https://github.com/celestinjr/pynjspc/issues"
