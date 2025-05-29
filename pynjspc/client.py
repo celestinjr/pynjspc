@@ -90,6 +90,7 @@ class NjsPCClient:
         self._last_activity: Optional[float] = None
         self._socket: Optional[socketio.AsyncClient] = None
         self._handlers_registered = False
+        self._session: Optional[aiohttp.ClientSession] = None
 
     def _update_activity(self) -> None:
         """Update the last activity timestamp for watchdog monitoring."""
@@ -132,6 +133,16 @@ class NjsPCClient:
             _LOGGER.error(f"Failed to resolve host {self.host}: {e}")
             raise NjsPCConnectionError(f"Cannot resolve host: {self.host}")
         return f"http://{ip}:{port or self.port}"
+
+    def _normalize_url(self, path: str) -> str:
+        """Normalize the URL by appending the path to the base host URL."""
+        base_url = self._get_host_url()
+        return f"{base_url}/{path.lstrip('/')}"
+
+    async def _initialize_session(self):
+        """Initialize the aiohttp client session."""
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
 
     async def connect(self, timeout: float = 10.0) -> None:
         """Establish connection to the controller. Starts connection monitor if enabled. Enforces timeout."""
@@ -185,7 +196,9 @@ class NjsPCClient:
             try:
                 await self._socket.disconnect()
             except Exception as e:
-                _LOGGER.warning(f"Exception during socket disconnect in async_close: {e}")
+                _LOGGER.warning(
+                    f"Exception during socket disconnect in async_close: {e}"
+                )
             self._socket = None
         self._connected = False
         self._monitor_stop = True
@@ -345,6 +358,58 @@ class NjsPCClient:
         self._update_activity()
         return result
 
+    async def http_get(self, path: str, timeout: Optional[float] = None) -> Any:
+        """Perform an HTTP GET request."""
+        await self._initialize_session()
+        url = self._normalize_url(path)
+        try:
+            async with self._session.get(
+                url, timeout=aiohttp.ClientTimeout(total=timeout or self._request_timeout)
+            ) as response:
+                if response.status != 200:
+                    raise NjsPCConnectionError(f"HTTP {response.status}: GET request failed at {url}")
+                return await response.json()
+        except aiohttp.ClientError as e:
+            raise NjsPCConnectionError(f"HTTP GET request failed: {e}")
+
+    async def http_put(
+        self, path: str, data: Optional[Dict[str, Any]] = None, timeout: Optional[float] = None
+    ) -> Any:
+        """Perform an HTTP PUT request."""
+        await self._initialize_session()
+        url = self._normalize_url(path)
+        try:
+            async with self._session.put(
+                url, json=data, timeout=aiohttp.ClientTimeout(total=timeout or self._request_timeout)
+            ) as response:
+                if response.status not in [200, 201]:
+                    raise NjsPCConnectionError(f"HTTP {response.status}: PUT request failed at {url}")
+                return await response.json()
+        except aiohttp.ClientError as e:
+            raise NjsPCConnectionError(f"HTTP PUT request failed: {e}")
+
+    async def http_post(
+        self, path: str, data: Optional[Dict[str, Any]] = None, timeout: Optional[float] = None
+    ) -> Any:
+        """Perform an HTTP POST request."""
+        await self._initialize_session()
+        url = self._normalize_url(path)
+        try:
+            async with self._session.post(
+                url, json=data, timeout=aiohttp.ClientTimeout(total=timeout or self._request_timeout)
+            ) as response:
+                if response.status not in [200, 201]:
+                    raise NjsPCConnectionError(f"HTTP {response.status}: POST request failed at {url}")
+                return await response.json()
+        except aiohttp.ClientError as e:
+            raise NjsPCConnectionError(f"HTTP POST request failed: {e}")
+
+    async def close_session(self):
+        """Close the aiohttp client session."""
+        if hasattr(self, "_session") and self._session is not None:
+            await self._session.close()
+            self._session = None
+
     def on(self, event: SocketIOEventsInbound, callback: Callable) -> None:
         """Register an event handler for a specific event. Supports multiple callbacks per event."""
         if event.value not in self._event_callbacks:
@@ -410,7 +475,9 @@ class NjsPCClient:
                         self._update_activity()
                         _LOGGER.debug("Connection is healthy after test_connection.")
                     else:
-                        _LOGGER.warning("HTTP connection check failed. Cleaning up socket.")
+                        _LOGGER.warning(
+                            "HTTP connection check failed. Cleaning up socket."
+                        )
                         await self._cleanup_socket()
 
                 if self._connected:
